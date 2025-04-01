@@ -1,0 +1,255 @@
+def save_user_info():
+    name = name_entry.get()
+    age = age_entry.get()
+    gender = gender_var.get()
+    favorite_genre = genre_entry.get()
+    
+    if not name or not age or gender == "Select" or not favorite_genre:
+        messagebox.showerror("Error", "All fields are required!")
+        return
+    
+    try:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open("user_data.txt", "a") as file:
+            file.write(f"{current_time}, {name}, {age}, {gender}, {favorite_genre}\n")
+        messagebox.showinfo("Success", "User information saved successfully!")
+        # Clear the entries
+        name_entry.delete(0, END)
+        age_entry.delete(0, END)
+        genre_entry.delete(0, END)
+        gender_var.set("Select")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to save user data: {e}")
+
+
+
+
+
+-- Create Database
+CREATE DATABASE BookVerse;
+USE BookVerse;
+
+-- Users Table
+CREATE TABLE Users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    age INT,
+    gender ENUM('Male', 'Female', 'Other'),
+    favorite_genre VARCHAR(50),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Products Table
+CREATE TABLE Products (
+    product_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    genre ENUM('Horror', 'Kids', 'Mystery', 'Humour') NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    stock INT DEFAULT 0,
+    image_url VARCHAR(255),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Orders Table
+CREATE TABLE Orders (
+    order_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    product_id INT,
+    option_type ENUM('Read', 'Purchase', 'Reviews', 'Discussion') NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    quantity INT DEFAULT 1,
+    order_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES Users(user_id),
+    FOREIGN KEY (product_id) REFERENCES Products(product_id)
+);
+
+-- Reviews Table
+CREATE TABLE Reviews (
+    review_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    product_id INT,
+    rating INT CHECK (rating BETWEEN 1 AND 5),
+    comment TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES Users(user_id),
+    FOREIGN KEY (product_id) REFERENCES Products(product_id)
+);
+
+-- Indexes
+CREATE INDEX idx_products_genre ON Products(genre);
+CREATE INDEX idx_orders_user ON Orders(user_id);
+CREATE INDEX idx_reviews_product ON Reviews(product_id);
+
+
+
+
+
+
+
+
+
+
+
+-- User Registration
+DELIMITER $$
+CREATE PROCEDURE RegisterUser(
+    IN p_username VARCHAR(50),
+    IN p_password VARCHAR(255),
+    IN p_name VARCHAR(100),
+    IN p_age INT,
+    IN p_gender ENUM('Male', 'Female', 'Other'),
+    IN p_favorite_genre VARCHAR(50)
+)
+BEGIN
+    INSERT INTO Users (username, password_hash, name, age, gender, favorite_genre)
+    VALUES (p_username, SHA2(p_password, 256), p_name, p_age, p_gender, p_favorite_genre);
+END$$
+DELIMITER ;
+
+-- Get Products by Genre
+DELIMITER $$
+CREATE PROCEDURE GetProductsByGenre(IN p_genre VARCHAR(50))
+BEGIN
+    SELECT product_id, name, description, price, image_url 
+    FROM Products 
+    WHERE genre = p_genre
+    LIMIT 10;
+END$$
+DELIMITER ;
+
+-- Place Order
+DELIMITER $$
+CREATE PROCEDURE PlaceOrder(
+    IN p_user_id INT,
+    IN p_product_id INT,
+    IN p_option_type ENUM('Read', 'Purchase', 'Reviews', 'Discussion'),
+    IN p_quantity INT
+)
+BEGIN
+    DECLARE product_price DECIMAL(10,2);
+    
+    -- Get product price
+    SELECT price INTO product_price FROM Products WHERE product_id = p_product_id;
+    
+    -- Insert order
+    INSERT INTO Orders (user_id, product_id, option_type, price, quantity)
+    VALUES (p_user_id, p_product_id, p_option_type, product_price, p_quantity);
+    
+    -- Update stock
+    UPDATE Products SET stock = stock - p_quantity WHERE product_id = p_product_id;
+END$$
+DELIMITER ;
+
+-- Add Review
+DELIMITER $$
+CREATE PROCEDURE AddReview(
+    IN p_user_id INT,
+    IN p_product_id INT,
+    IN p_rating INT,
+    IN p_comment TEXT
+)
+BEGIN
+    INSERT INTO Reviews (user_id, product_id, rating, comment)
+    VALUES (p_user_id, p_product_id, p_rating, p_comment);
+END$$
+DELIMITER ;
+
+
+
+
+
+
+
+
+
+
+
+
+-- Insert Sample Products
+INSERT INTO Products (name, description, genre, price, image_url) VALUES
+('The Haunting', 'A classic horror story', 'Horror', 12.99, 'https://example.com/horror1.jpg'),
+('Kids Adventure', 'Fun children''s book', 'Kids', 9.99, 'https://example.com/kids1.jpg'),
+('Mystery Mansion', 'Thrilling mystery novel', 'Mystery', 14.99, 'https://example.com/mystery1.jpg'),
+('Comedy Gold', 'Hilarious humor collection', 'Humour', 11.99, 'https://example.com/humor1.jpg');
+
+-- Create Sample User
+CALL RegisterUser('john_doe', 'securepassword123', 'John Doe', 28, 'Male', 'Mystery');
+
+-- Place Sample Order
+CALL PlaceOrder(1, 3, 'Purchase', 2);
+
+-- Add Sample Review
+CALL AddReview(1, 3, 5, 'Amazing mystery book! Couldn''t put it down!');
+
+
+
+
+
+
+
+
+
+-- Get User Profile
+SELECT name, age, gender, favorite_genre 
+FROM Users 
+WHERE user_id = 1;
+
+-- Get Order History
+SELECT p.name, o.option_type, o.price, o.quantity, o.order_date
+FROM Orders o
+JOIN Products p ON o.product_id = p.product_id
+WHERE o.user_id = 1;
+
+-- Get Product Reviews
+SELECT u.name, r.rating, r.comment, r.created_at
+FROM Reviews r
+JOIN Users u ON r.user_id = u.user_id
+WHERE r.product_id = 3;
+
+-- Get Genre Recommendations
+SELECT product_id, name, price, image_url
+FROM Products
+WHERE genre = (SELECT favorite_genre FROM Users WHERE user_id = 1)
+LIMIT 5;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import mysql.connector
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host="localhost",
+        user="bookverse_user",
+        password="secure_password",
+        database="BookVerse"
+    )
+
+# Example usage for user registration
+def register_user(username, password, name, age, gender, favorite_genre):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.callproc('RegisterUser', 
+            (username, password, name, age, gender, favorite_genre))
+        conn.commit()
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+    finally:
+        cursor.close()
+        conn.close()
